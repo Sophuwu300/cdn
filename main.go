@@ -31,7 +31,7 @@ func main() {
 			fileserver.UpHandle("/X/", db.PutFile)
 		}
 	}
-	fileserver.Handle("/", dir.Open("."))
+	fileserver.Handle("/", dir.Open(config.HttpDir))
 
 	server := http.Server{
 		Addr:    config.Addr + ":" + config.Port,
