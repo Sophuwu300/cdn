@@ -7,36 +7,34 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sophuwu.site/cdn/config"
 	"sophuwu.site/cdn/dbfs"
 	"sophuwu.site/cdn/dir"
 	"sophuwu.site/cdn/fileserver"
 )
 
-// var db *bolt.DB
-//
-// func init() {
-// 	var err error
-// 	db, err = bolt.Open("build/my.db", 0600, nil)
-// 	if err != nil {
-// 		log.Fatalln(err)
-// 	}
-// }
-
 func main() {
-	db, err := dbfs.OpenDB("build/my.db")
-	if err != nil {
-		fmt.Println(err)
-		return
+	config.Get()
+	fmt.Println(config.DbPath, config.OtpPath, config.Port, config.Addr)
+
+	var err error
+	var db *dbfs.DBFS
+
+	if config.DbPath != "" {
+		db, err = dbfs.OpenDB(config.DbPath)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		fileserver.Handle("/x/", db.GetEntry)
+		if config.OtpPath != "" {
+			fileserver.UpHandle("/X/", db.PutFile)
+		}
 	}
-
-	fileserver.Handle("/dir/", dir.Open("."))
-	fileserver.Handle("/db/", db.GetEntry)
-
-	sig := make(chan os.Signal)
-	signal.Notify(sig, os.Interrupt)
+	fileserver.Handle("/", dir.Open("."))
 
 	server := http.Server{
-		Addr:    ":8080",
+		Addr:    config.Addr + ":" + config.Port,
 		Handler: nil,
 	}
 
