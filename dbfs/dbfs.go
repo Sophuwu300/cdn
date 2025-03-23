@@ -3,12 +3,18 @@ package dbfs
 import (
 	"fmt"
 	bolt "go.etcd.io/bbolt"
+
 	"path/filepath"
-	"sophuwu.site/cdn/fileserver"
 	"strings"
 )
 
-type DirEntry = fileserver.DirEntry
+// DirEntry represents a file or directory entry
+type DirEntry struct {
+	Name     string // Name of the file or directory
+	FullName string // Full path of the file or directory
+	Size     int    // Size of the file in bytes
+	IsDir    bool   // Is true if the entry is a directory
+}
 
 // DBFS represents a file system in a database
 type DBFS struct {

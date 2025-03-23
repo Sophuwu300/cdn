@@ -1,0 +1,10 @@
+{{ define "filelabel" }}
+<a href="{{ .Url }}">
+	<div class="filelabel">
+		<span class="icon">{{ .Icon }}</span>
+		<span>{{ .Name }}</span>
+		<span class="right">{{ .Size }}</span>
+		<span class="right" title="{{ .Mod.Full }}">{{ .Mod.Short }}</span>
+	</div>
+</a>
+{{ end }}
