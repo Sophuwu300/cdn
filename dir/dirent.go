@@ -53,7 +53,7 @@ func (d *Dir) GetEntry(path string) (data []byte, items []DirEntry, err error) {
 		}
 		return
 	}
-	if fi.Mode().IsRegular() {
+	if fi.Mode().IsRegular() || fi.Mode().Type() == fs.ModeSymlink {
 		data, err = io.ReadAll(f)
 		return
 	}

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sophuwu.site/cdn/config"
 	"strings"
+	"time"
 )
 
 type DirEntry struct {
@@ -144,27 +145,88 @@ a {color: var(--fg);text-decoration: none;}
 {{ end }}`)
 }
 
+type readseek struct {
+	bb []byte
+	i  int
+}
+
+func (r *readseek) Read(p []byte) (n int, err error) {
+	if len(p) > len(r.bb)-r.i {
+		n = len(r.bb) - r.i
+	} else {
+		n = len(p)
+	}
+	for i := 0; i < n; i++ {
+		p[i] = r.bb[r.i+i]
+	}
+	r.i += n
+	if r.i >= len(r.bb) {
+		err = io.EOF
+	}
+	return
+}
+func (r *readseek) Seek(offset int64, whence int) (int64, error) {
+	var n int
+	switch whence {
+	case io.SeekStart:
+		n = int(offset)
+	case io.SeekCurrent:
+		n = r.i + int(offset)
+	case io.SeekEnd:
+		n = len(r.bb) + int(offset)
+	}
+	if n < 0 || n > len(r.bb) {
+		return 0, fmt.Errorf("invalid offset")
+	}
+	r.i = n
+	return int64(r.i), nil
+}
+
+func (r *readseek) nullify() {
+	r.bb = []byte{}
+}
+func newReadSeek(b []byte) *readseek {
+	return &readseek{b, 0}
+}
+
+type writer struct {
+	bb []byte
+}
+
+func (r *writer) Write(p []byte) (n int, err error) {
+	r.bb = append(r.bb, p...)
+	return len(p), nil
+}
+func (r *writer) nullify() {
+	r.bb = []byte{}
+}
+func (r *writer) convert() *readseek {
+	return newReadSeek(r.bb)
+}
+func newWriter() *writer {
+	return &writer{bb: []byte{}}
+}
+
 func Handler(prefix string, dir func(string) ([]byte, []DirEntry, error)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ww := newWriter()
 		data, items, err := dir(strings.TrimPrefix(r.URL.Path, prefix))
-		if FillError(w, err, 404) {
-			return
+		if !FillError(ww, err, 404) && data != nil {
+			ww.Write(data)
+		} else {
+			err = FillTemp(ww, r.URL.Path, append([]DirEntry{{
+				Name:     "../",
+				FullName: filepath.Dir(strings.TrimSuffix(r.URL.Path, "/")),
+				Size:     0,
+				IsDir:    true,
+			}}, items...))
+			FillError(ww, err, 500)
 		}
-		w.WriteHeader(http.StatusOK)
-		if data != nil {
-			w.Write(data)
-			return
-		}
-		items = append([]DirEntry{{
-			Name:     "../",
-			FullName: filepath.Dir(strings.TrimSuffix(r.URL.Path, "/")),
-			Size:     0,
-			IsDir:    true,
-		}}, items...)
-		err = FillTemp(w, r.URL.Path, items)
-		if FillError(w, err, 500) {
-			return
-		}
+		rs := ww.convert()
+		ww.nullify()
+		w.WriteHeader(http.StatusNotModified)
+		http.ServeContent(w, r, filepath.Base(r.URL.Path), time.Time{}, rs)
+		rs.nullify()
 	})
 }
 

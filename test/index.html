@@ -1,0 +1,71 @@
+{{ define "index" }}
+<!DOCTYPE html>
+<html>
+<head>
+{{ if .Path }}
+<title>{{ .Path }}</title>
+{{ else }}
+{{ if .Upload }}
+<title>Upload</title>
+{{ else }}
+<title>Error</title>
+{{ end }}
+{{ end }}
+<style>
+:root {--bord: #ccc;--fg: #fff;}
+body {width: calc(100% - 2ch);margin: auto auto auto auto ;max-width: 800px;background: #262833;color: var(--fg);font-family: sans-serif;}
+.trees {width: 100%;display: flex;flex-direction: column;padding: 0;margin: auto auto;border: 1px solid var(--bord);border-radius: 1ch;overflow: hidden;}
+.trees a {display: contents;text-decoration: none;}
+.filelabel {padding: 8px;font-size: 1rem;width: auto;margin: 0;display: grid;grid-template-columns: auto auto;grid-gap: 1ch;justify-content: space-between;align-items: center;border-radius: 0;background: transparent;}
+.trees > a > *  {border-bottom: 1px solid var(--bord);background: #1c1e26;}
+.trees > a > *:hover {background: #2c2e46;}
+.trees > a:last-child > *  {border-bottom: none;}
+a {color: var(--fg);text-decoration: none;}
+.filelabel > :last-child {text-align: right;}
+@font-face {
+    font-family: "sophuwuicons";
+    /*src: url("/static/icons.woff2") format("woff2"),*/
+    src: url("http://soph/font/sophicons/sophuwuicons.woff2") format("woff2"),
+    /*url("/static/icons.ttf") format("truetype")*/
+    url("http://soph/font/sophicons/sophuwuicons.ttf") format("truetype")
+}
+.icon {
+  font-family: "sophuwuicons";
+  font-size: inherit;
+  font-weight: normal !important;
+  font-style: normal;
+  height: 1em;
+}
+</style>
+</head>
+<body>
+{{ if .Path }}
+<h1>Index of: {{ .Path }}</h1>
+<div class="trees">
+{{ range .Dirs }}
+<a href="{{ .Name }}"><div class="filelabel"><span class="icon"></span><span>{{ .Name }}</span><span></span></div></a>
+{{ end }}
+{{ range .Items }}
+<a href="{{ .Name }}"><div class="filelabel"><span class="icon"></span><span>{{ .Name }}</span><span>{{ .Size }}</span></div></a>
+{{ end }}
+</div>
+{{ else }}
+{{ if .Error }}
+<h1>{{ .Error }}</h1>
+{{ else }}
+{{ if .Upload }}
+<h1>Upload</h1>
+<form class="trees" enctype="multipart/form-data" action="{{ .Upload }}" method="post">
+	<div class="filelabel"><span>Path:</span><input type="text" name="path" /></div>
+	<div class="filelabel"><span>File:</span><input type="file" name="myFile" /></div>
+	<div class="filelabel"><span>Username:</span><input type="text" name="username" /></div>
+	<div class="filelabel"><span>Password:</span><input type="password" name="password" /></div>
+	<div class="filelabel"><span>OTP:</span><input type="text" name="otp" /></div>
+	<div class="filelabel"><span></span><input type="submit" value="Upload" /></div>
+</form>
+{{ end }}
+{{ end }}
+{{ end }}
+</body>
+</html>
+{{ end }}
