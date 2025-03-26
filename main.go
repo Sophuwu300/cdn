@@ -2,7 +2,13 @@ package main
 
 import (
 	"embed"
+	"errors"
 	"fmt"
+	"git.sophuwu.com/cdn/config"
+	"git.sophuwu.com/cdn/imgconv"
+	"github.com/asdine/storm/v3"
+	"go.etcd.io/bbolt"
+
 	"io/fs"
 	"time"
 
@@ -68,7 +74,7 @@ type TemplateData struct {
 func (t *TemplateData) add(a DirEntry, size int64, dir bool) {
 	if dir {
 		a.Size = func() string {
-			n, e := os.ReadDir(filepath.Join(Config.HTTPDir, a.Url))
+			n, e := os.ReadDir(filepath.Join(config.HttpDir, a.Url))
 			if e == nil {
 				return fmt.Sprintf("%d items", len(n))
 			}
@@ -109,14 +115,69 @@ func FillError(w io.Writer, err error, code int) bool {
 	if err == nil {
 		return false
 	}
+	fmt.Fprintf(os.Stderr, "error: %s\n", err)
 	_ = Temp.ExecuteTemplate(w, "index", map[string]string{
 		"Error": fmt.Sprintf("%d: %s", code, HttpCodes[code]),
 	})
 	return true
 }
 
+type ImgIcon struct {
+	ImgPath string `storm:"id"`
+	ModTime string
+	PngData []byte
+}
+
 func customFileServer(root http.Dir) http.Handler {
+	iconFunc := func(w http.ResponseWriter, r *http.Request) {
+		qq := r.URL.Query()
+		var icon ImgIcon
+		if qq.Get("icon") == "" || qq.Get("mod") == "" {
+			FillError(w, fmt.Errorf("icon or mod not found"), 400)
+			return
+		}
+		err := DB.One("ImgPath", qq.Get("icon"), &icon)
+		if err != nil || icon.ModTime != qq.Get("mod") {
+			fn := DB.Update
+			if errors.Is(err, storm.ErrNotFound) {
+				fn = DB.Save
+			}
+			icon.ImgPath = qq.Get("icon")
+			icon.ModTime = qq.Get("mod")
+			var f http.File
+			f, err = root.Open(icon.ImgPath)
+			if FillError(w, err, 404) {
+				return
+			}
+			var fi fs.FileInfo
+			fi, err = f.Stat()
+			if err == nil && fi.IsDir() {
+				err = fmt.Errorf("icon is dir")
+			}
+			if FillError(w, err, 400) {
+				f.Close()
+				return
+			}
+			icon.PngData, err = imgconv.Media2Icon(icon.ImgPath, f)
+			f.Close()
+			if FillError(w, err, 404) {
+				return
+			}
+			err = fn(&icon)
+			if FillError(w, err, 500) {
+				return
+			}
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.WriteHeader(200)
+		w.Write(icon.PngData)
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Has("icon") {
+			iconFunc(w, r)
+			return
+		}
 		upath := r.URL.Path
 		f, err := root.Open(upath)
 		if FillError(w, err, 404) {
@@ -152,39 +213,26 @@ func customFileServer(root http.Dir) http.Handler {
 	})
 }
 
+var DB *storm.DB
+
 func main() {
 	// Fs := os.DirFS(Config.HTTPDir)
 
-	http.Handle("/", customFileServer(http.Dir(Config.HTTPDir)))
+	http.Handle("/", customFileServer(http.Dir(config.HttpDir)))
 	// http.Handle("/", http.StripPrefix("/", FileServer(http.Dir(Config.HTTPDir))))
 
-	http.ListenAndServe(Config.Listen, nil)
+	http.ListenAndServe(config.Addr+":"+config.Port, nil)
 
-}
-
-var Config struct {
-	HTTPDir string
-	Listen  string
 }
 
 func init() {
 	Temp = template.Must(template.ParseFS(embedHtml, "html/*"))
-
-	httpdir := os.Getenv("HTTP_DIR")
-	if httpdir == "" {
-		httpdir = "."
+	config.Get()
+	db, err := storm.Open(config.DbPath, storm.BoltOptions(0600, &bbolt.Options{Timeout: 1 * time.Second}))
+	if err != nil {
+		fmt.Println("Failed to open database:", err)
+		os.Exit(1)
 	}
-	Config.HTTPDir, _ = filepath.Abs(httpdir)
-
-	Config.Listen = os.Getenv("ADDR")
-	if Config.Listen == "" {
-		Config.Listen = "127.0.0.1"
-	}
-	Config.Listen += ":"
-	n := len(Config.Listen)
-	Config.Listen += os.Getenv("PORT")
-	if len(Config.Listen) == n {
-		Config.Listen += "8844"
-	}
-
+	db.Init(&ImgIcon{})
+	DB = db
 }

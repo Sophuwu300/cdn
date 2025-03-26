@@ -2,9 +2,9 @@
 <a href="{{ .Url }}">
 	<div class="filelabel">
 		<span class="icon">{{ .Icon }}</span>
-		<span>{{ .Name }}</span>
+		<span class="file-name">{{ .Name }}</span>
 		<span class="right">{{ .Size }}</span>
-		<span class="right" title="{{ .Mod.Full }}">{{ .Mod.Short }}</span>
+		<span class="right mod-time" title="{{ .Mod.Full }}">{{ .Mod.Short }}</span>
 	</div>
 </a>
 {{ end }}
