@@ -1,10 +1,10 @@
 {{ define "filelabel" }}
-<a href="{{ .Url }}">
-	<div class="filelabel">
+<a href="{{ .Url }}" id="{{ .Name }}" class="filelabel">
 		<span class="icon">{{ .Icon }}</span>
 		<span class="file-name">{{ .Name }}</span>
-		<span class="right">{{ .Size }}</span>
-		<span class="right mod-time" title="{{ .Mod.Full }}">{{ .Mod.Short }}</span>
-	</div>
+		<span class="right" >{{ .Size }}</span>
+		<span class="right timestr" title="{{ .Mod.Full }}">{{ .Mod.Short }}</span>
+		<input type="hidden" class="mod-time" value="{{ .ModUnix }}" />
+		<input type="hidden" class="size" value="{{ .SizeN }}" />
 </a>
 {{ end }}

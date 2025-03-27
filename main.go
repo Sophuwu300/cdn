@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"errors"
 	"fmt"
@@ -8,13 +9,15 @@ import (
 	"git.sophuwu.com/cdn/imgconv"
 	"github.com/asdine/storm/v3"
 	"go.etcd.io/bbolt"
+	"golang.org/x/sys/unix"
+	"os/signal"
+	pathlib "path"
 
 	"io/fs"
 	"time"
 
 	_ "embed"
 	"html/template"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -30,25 +33,23 @@ type TimeStr struct {
 }
 
 type DirEntry struct {
-	Icon string
-	Name string
-	Size string
-	Url  string
-	mod  int64
-	Mod  TimeStr
+	Icon    string
+	Name    string
+	Size    string
+	SizeN   int64
+	Url     string
+	ModUnix int64
+	Mod     TimeStr
 }
 
-func DateToInt(t time.Time) int { // bit size: y 12, mon 4, day 5
-	return t.Year()<<(12+4+5) | int(t.Month())<<(4+5) | t.Day()
-}
-
-func FmtTime(t time.Time, today int) TimeStr {
+func FmtTime(t time.Time, today time.Time) TimeStr {
 	var pt TimeStr
-	pt.Full = t.Format("Mon 02 Jan 2006 15:04")
-	if DateToInt(t) == today {
-		pt.Short = "today " + t.Format("15:04")
+	pt.Full = t.Format(time.RFC822Z)
+	d := today.Sub(t)
+	if d < 5*24*time.Hour {
+		pt.Short = t.Format("Mon, 15:04")
 	} else {
-		pt.Short = t.Format("02 Jan 2006")
+		pt.Short = t.Format("2006-01-02")
 	}
 	return pt
 }
@@ -73,17 +74,16 @@ type TemplateData struct {
 
 func (t *TemplateData) add(a DirEntry, size int64, dir bool) {
 	if dir {
-		a.Size = func() string {
-			n, e := os.ReadDir(filepath.Join(config.HttpDir, a.Url))
-			if e == nil {
-				return fmt.Sprintf("%d items", len(n))
-			}
-			return "0 items"
+		a.SizeN = func() int64 {
+			n, _ := os.ReadDir(filepath.Join(config.HttpDir, a.Url))
+			return int64(len(n))
 		}()
+		a.Size = fmt.Sprintf("%d items", a.SizeN)
 		a.Icon = "F"
 		t.Dirs = append(t.Dirs, a)
 	} else {
 		a.Icon = "f"
+		a.SizeN = size
 		a.Size = Si(size)
 		t.Items = append(t.Items, a)
 	}
@@ -92,7 +92,7 @@ func (t *TemplateData) sortNewest() {
 	for _, tt := range []*[]DirEntry{&t.Items, &t.Dirs} {
 		for i := 0; i < len(*tt); i++ {
 			for j := i + 1; j < len(*tt); j++ {
-				if (*tt)[i].mod < (*tt)[j].mod {
+				if (*tt)[i].ModUnix < (*tt)[j].ModUnix {
 					(*tt)[i], (*tt)[j] = (*tt)[j], (*tt)[i]
 				}
 			}
@@ -102,23 +102,31 @@ func (t *TemplateData) sortNewest() {
 
 var Temp *template.Template
 
-var HttpCodes = map[int]string{
-	404: "Not Found",
-	500: "Internal Server Error",
-	403: "Forbidden",
-	401: "Unauthorized",
-	400: "Bad Request",
-	200: "OK",
+type HttpCode struct {
+	Code    int
+	Name    string
+	Message string
 }
 
-func FillError(w io.Writer, err error, code int) bool {
+var HttpCodes = map[int]HttpCode{
+	404: HttpCode{404, "Not Found", "The file you requested was not found on this server."},
+	500: HttpCode{500, "Internal Server Error", "The server encountered an internal error and was unable to complete your request."},
+	403: HttpCode{403, "Forbidden", "The server understood the request, but is refusing to fulfill it."},
+	401: HttpCode{401, "Unauthorized", "You lack the necessary permissions to access this resource."},
+	400: HttpCode{400, "Bad Request", "The server could not understand the request as it was malformed."},
+}
+
+func FillError(w http.ResponseWriter, err error, code int) bool {
 	if err == nil {
 		return false
 	}
 	fmt.Fprintf(os.Stderr, "error: %s\n", err)
-	_ = Temp.ExecuteTemplate(w, "index", map[string]string{
-		"Error": fmt.Sprintf("%d: %s", code, HttpCodes[code]),
-	})
+	w.WriteHeader(code)
+	ht, ok := HttpCodes[code]
+	if !ok {
+		ht = HttpCodes[500]
+	}
+	_ = Temp.ExecuteTemplate(w, "error", ht)
 	return true
 }
 
@@ -126,6 +134,22 @@ type ImgIcon struct {
 	ImgPath string `storm:"id"`
 	ModTime string
 	PngData []byte
+}
+
+func CleanPath(d http.Dir, name string) (string, error) {
+	path := pathlib.Clean("/" + name)[1:]
+	if path == "" {
+		return "", errors.New("http: empty file path")
+	}
+	path, err := filepath.Localize(path)
+	if err != nil {
+		return "", errors.New("http: invalid or unsafe file path")
+	}
+	dir := string(d)
+	if !filepath.IsAbs(dir) {
+		return "", errors.New("http: invalid or unsafe file path")
+	}
+	return filepath.Join(dir, path), nil
 }
 
 func customFileServer(root http.Dir) http.Handler {
@@ -144,22 +168,12 @@ func customFileServer(root http.Dir) http.Handler {
 			}
 			icon.ImgPath = qq.Get("icon")
 			icon.ModTime = qq.Get("mod")
-			var f http.File
-			f, err = root.Open(icon.ImgPath)
-			if FillError(w, err, 404) {
+			var path string
+			if path, err = CleanPath(root, qq.Get("icon")); err != nil {
+				FillError(w, fmt.Errorf("icon or mod not found"), 400)
 				return
 			}
-			var fi fs.FileInfo
-			fi, err = f.Stat()
-			if err == nil && fi.IsDir() {
-				err = fmt.Errorf("icon is dir")
-			}
-			if FillError(w, err, 400) {
-				f.Close()
-				return
-			}
-			icon.PngData, err = imgconv.Media2Icon(icon.ImgPath, f)
-			f.Close()
+			icon.PngData, err = imgconv.Media2Icon(path)
 			if FillError(w, err, 404) {
 				return
 			}
@@ -196,13 +210,13 @@ func customFileServer(root http.Dir) http.Handler {
 				return
 			}
 			t := TemplateData{Path: upath, Dirs: []DirEntry{}, Items: []DirEntry{}}
-			today := DateToInt(time.Now())
+			today := time.Now().UTC()
 			for _, d := range fi {
 				t.add(DirEntry{
-					Name: d.Name(),
-					Url:  filepath.Join(upath, d.Name()),
-					mod:  d.ModTime().Unix(),
-					Mod:  FmtTime(d.ModTime(), today),
+					Name:    d.Name(),
+					Url:     filepath.Join(upath, d.Name()),
+					ModUnix: d.ModTime().Local().Unix(),
+					Mod:     FmtTime(d.ModTime().UTC(), today),
 				}, d.Size(), d.IsDir())
 			}
 			t.sortNewest()
@@ -216,13 +230,25 @@ func customFileServer(root http.Dir) http.Handler {
 var DB *storm.DB
 
 func main() {
-	// Fs := os.DirFS(Config.HTTPDir)
-
-	http.Handle("/", customFileServer(http.Dir(config.HttpDir)))
-	// http.Handle("/", http.StripPrefix("/", FileServer(http.Dir(Config.HTTPDir))))
-
-	http.ListenAndServe(config.Addr+":"+config.Port, nil)
-
+	server := http.Server{
+		Addr:    config.Addr + ":" + config.Port,
+		Handler: customFileServer(http.Dir(config.HttpDir)),
+	}
+	fmt.Printf("starting cdn server with pid: %d\n\tlistening on %s\n\tserving directory: %s\n", os.Getpid(), server.Addr, config.HttpDir)
+	go func() {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			fmt.Fprintf(os.Stderr, "error: %s\n", err)
+			DB.Close()
+			os.Exit(1)
+		}
+	}()
+	sigChan := make(chan os.Signal)
+	signal.Notify(sigChan, unix.SIGINT, unix.SIGTERM)
+	fmt.Printf("got signal %v, stopping\n", <-sigChan)
+	server.Shutdown(context.Background())
+	DB.Close()
+	fmt.Println("Server stopped")
+	os.Exit(0)
 }
 
 func init() {
@@ -233,6 +259,5 @@ func init() {
 		fmt.Println("Failed to open database:", err)
 		os.Exit(1)
 	}
-	db.Init(&ImgIcon{})
 	DB = db
 }

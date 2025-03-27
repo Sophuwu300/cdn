@@ -1,0 +1,13 @@
+{{ define "error" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {{ template "head" . }}
+    <title>{{ .Code }}: {{ .Name }}</title>
+</head>
+<body>
+    <h1>{{ .Code }}: {{ .Name }}</h1>
+    <p>{{ .Message }}</p>
+</body>
+</html>
+{{ end }}
