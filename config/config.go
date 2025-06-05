@@ -6,7 +6,6 @@ import (
 	"strings"
 )
 
-var OtpPath string
 var DbPath string
 var HttpDir string
 var Port string
@@ -30,12 +29,11 @@ func checkAbsDir(path string) bool {
 	return checkAbs(path) && checkDir(path)
 }
 
-func Get() {
-	OtpPath = strings.TrimSpace(os.Getenv("OTP_PATH"))
+func init() {
 	DbPath = strings.TrimSpace(os.Getenv("DB_PATH"))
 	HttpDir = strings.TrimSpace(os.Getenv("HTTP_DIR"))
-	if !checkAbs(DbPath) || !checkAbs(OtpPath) || !checkAbsDir(HttpDir) {
-		fmt.Println("Please set the environment variables OTP_PATH, DB_PATH and HTTP_DIR to absolute paths.")
+	if !checkAbs(DbPath) || !checkAbsDir(HttpDir) {
+		fmt.Println("Please set the environment variables DB_PATH and HTTP_DIR to absolute paths.")
 		os.Exit(1)
 	}
 	Port = strings.TrimSpace(os.Getenv("PORT"))

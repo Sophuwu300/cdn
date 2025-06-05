@@ -4,21 +4,17 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/nfnt/resize"
-	"image/gif"
-	"os"
-	"os/exec"
-	"strings"
-
-	// "gocv.io/x/gocv"
 	"golang.org/x/image/webp"
 	"image"
+	"image/gif"
 	"image/jpeg"
 	"image/png"
 	"io"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 )
-
-// ffmpeg -i file.mp4 -vf "select='eq(n\,20)+eq(n\,40)+eq(n\,60)+eq(n\,80)'" -vsync 0 frame%d.png
 
 func scaleEncode(img image.Image) ([]byte, error) {
 	var w, h uint
@@ -40,9 +36,6 @@ func scaleEncode(img image.Image) ([]byte, error) {
 }
 
 func getFirstFrame(path string) (image.Image, error) {
-
-	// ffmpeg -i input.mp4 -vframes 1 -f image2pipe -vcodec png -
-	// -vf "select='eq(pict_type\,I)'" -frames:v 1
 	var out bytes.Buffer
 	cmd := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "error", "-i", path, "-vf", "select='eq(pict_type\\,I)'", "-frames:v", "1", "-vsync", "0", "-f", "image2pipe", "-c:v", "png", "-")
 	// cmd.Stdin = file
@@ -90,29 +83,3 @@ func Media2Icon(path string) ([]byte, error) {
 	}
 	return scaleEncode(img)
 }
-
-/*
-func getFirstFrameAsPNGBytes(videoPath string) ([]byte, error) {
-	// Open the video file
-	video, err := gocv.VideoCaptureFile(videoPath)
-	if err != nil {
-		return nil, fmt.Errorf("error opening video: %v", err)
-	}
-	img := gocv.NewMat()
-	ok := video.Read(&img)
-
-	if !ok || img.Empty() {
-		img.Close()
-		video.Close()
-		return nil, fmt.Errorf("failed to read the first frame")
-	}
-
-	imgImg, err := img.ToImage()
-	img.Close()
-	video.Close()
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert frame to image: %v", err)
-	}
-	return scaleEncode(imgImg)
-}
-*/

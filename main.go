@@ -78,6 +78,7 @@ func (t *TemplateData) add(a DirEntry, size int64, dir bool) {
 			n, _ := os.ReadDir(filepath.Join(config.HttpDir, a.Url))
 			return int64(len(n))
 		}()
+		a.Url += "/"
 		a.Size = fmt.Sprintf("%d items", a.SizeN)
 		a.Icon = "F"
 		t.Dirs = append(t.Dirs, a)
@@ -152,7 +153,7 @@ func CleanPath(d http.Dir, name string) (string, error) {
 	return filepath.Join(dir, path), nil
 }
 
-func customFileServer(root http.Dir) http.Handler {
+func CustomFileServer(root http.Dir) http.Handler {
 	iconFunc := func(w http.ResponseWriter, r *http.Request) {
 		qq := r.URL.Query()
 		var icon ImgIcon
@@ -230,34 +231,39 @@ func customFileServer(root http.Dir) http.Handler {
 var DB *storm.DB
 
 func main() {
-	server := http.Server{
-		Addr:    config.Addr + ":" + config.Port,
-		Handler: customFileServer(http.Dir(config.HttpDir)),
-	}
-	fmt.Printf("starting cdn server with pid: %d\n\tlistening on %s\n\tserving directory: %s\n", os.Getpid(), server.Addr, config.HttpDir)
-	go func() {
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			fmt.Fprintf(os.Stderr, "error: %s\n", err)
-			DB.Close()
-			os.Exit(1)
-		}
-	}()
-	sigChan := make(chan os.Signal)
-	signal.Notify(sigChan, unix.SIGINT, unix.SIGTERM)
-	fmt.Printf("got signal %v, stopping\n", <-sigChan)
-	server.Shutdown(context.Background())
-	DB.Close()
-	fmt.Println("Server stopped")
-	os.Exit(0)
-}
-
-func init() {
 	Temp = template.Must(template.ParseFS(embedHtml, "html/*"))
-	config.Get()
 	db, err := storm.Open(config.DbPath, storm.BoltOptions(0600, &bbolt.Options{Timeout: 1 * time.Second}))
 	if err != nil {
 		fmt.Println("Failed to open database:", err)
 		os.Exit(1)
 	}
 	DB = db
+	server := http.Server{
+		Addr:    config.Addr + ":" + config.Port,
+		Handler: CustomFileServer(http.Dir(config.HttpDir)),
+	}
+	fmt.Printf("starting cdn server with pid: %d\n\tlistening on %s\n\tserving directory: %s\n", os.Getpid(), server.Addr, config.HttpDir)
+
+	closeDB := func() {
+		err1 := DB.Close()
+		if err1 != nil {
+			fmt.Fprintf(os.Stderr, "error closing database: %s\n", err1)
+			os.Exit(1)
+		}
+		fmt.Println("Database closed safely")
+	}
+
+	go func() {
+		if err1 := server.ListenAndServe(); err1 != nil && !errors.Is(err1, http.ErrServerClosed) {
+			fmt.Fprintf(os.Stderr, "error: %s\n", err1)
+			closeDB()
+			os.Exit(1)
+		}
+	}()
+
+	sigChan := make(chan os.Signal)
+	signal.Notify(sigChan, unix.SIGINT, unix.SIGTERM)
+	fmt.Printf("got signal %v, stopping\n", <-sigChan)
+	server.Shutdown(context.Background())
+	closeDB()
 }

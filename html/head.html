@@ -1,11 +1,12 @@
 {{ define "head" }}
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
 :root{
   color:white;
     background: #262833;
     @media (min-width: 2000px){
-        font-size: 115%;
+        font-size: 110%;
     }
     @media (max-width: 2000px) and (min-width: 1500px) {
         font-size: 100%;
@@ -13,18 +14,34 @@
     @media (max-width: 1500px) and (min-width: 1200px) {
         font-size: 85%;
     }
-    @media (max-width: 1200px) and (min-width: 800px) {
+    @media (max-width: 1200px) and (min-width: 1000px) {
         font-size: 75%;
     }
-
-    @media (max-width: 800px) and (min-width: 600px) {
+    @media (max-width: 1000px) and (min-width: 800px) {
         font-size: 70%;
     }
-    @media (max-width: 600px) and (min-width: 400px) {
-        font-size: 55%;
+    @media (max-width: 800px) and (min-width: 700px) {
+        font-size: 65%;
     }
-    @media (max-width: 400px) {
-        font-size: 35%;
+    @media (max-width: 700px) and (min-width: 600px) {
+        font-size: 70%;
+        --phone: 1.2;
+    }
+    @media (max-width: 600px) and (min-width: 500px) {
+        font-size: 65%;
+        --phone: 1.25;
+    }
+    @media (max-width: 500px) and (min-width: 400px) {
+        font-size: 60%;
+        --phone: 1.3;
+    }
+    @media (max-width: 400px) and (min-width: 300px) {
+        font-size: 55%;
+        --phone: 1.35;
+    }
+    @media (max-width: 300px) {
+        font-size: 45%;
+        --phone: 1.5;
     }
 
 }
@@ -73,7 +90,7 @@ a {
   padding: 1ch 2ch;
   margin: 0;
   display: grid;
-  grid-template-columns: 2.5em calc(60% - 4em - 2ch) max(15ch,20%) max(20ch,20%);
+  grid-template-columns: 2.5em calc(calc(60% / var(--phone,1)  - 4em - 2ch)) max(15ch,calc(20% / var(--phone,1))) max(20ch,calc(20% / var(--phone,1)));
   justify-content: space-between;
   align-items: center;
   border-radius: 1em;

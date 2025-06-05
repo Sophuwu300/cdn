@@ -112,7 +112,7 @@
 				if (elem.innerText[0] >= '0' && elem.innerText[0] <= '9') {
 					elem.innerText = t.getFullYear()+"-"+ZeroPad((t.getMonth()+1),2)+"-"+ZeroPad(t.getDate(),2);
 				} else {
-					elem.innerText = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][t.getDay()] + ", " + ZeroPad(t.getHours(),2) + ":" + ZeroPad(t.getMinutes(),2);
+					elem.innerText = ["Sun","Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][t.getDay()] + ", " + ZeroPad(t.getHours(),2) + ":" + ZeroPad(t.getMinutes(),2);
 				}
 			});
 			currentSort = localStorage.getItem("sort");
