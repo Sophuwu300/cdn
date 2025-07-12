@@ -1,14 +1,14 @@
 [Unit]
-Description=http file server 8080
+Description=File Sharing HTTP Server
 After=network.target
 
 [Service]
 WorkingDirectory=/home/httpuser/files
 ExecStart=/usr/local/bin/cdnd
 Type=simple
+
 User=httpuser
 
-Environment=OTP_PATH=/home/httpuser/otp
 Environment=DB_PATH=/home/httpuser/files.db
 Environment=HTTP_DIR=/home/httpuser/files
 Environment=PORT=9889
